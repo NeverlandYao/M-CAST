@@ -14,3 +14,5 @@ dist/
 build/
 coverage/
 *.log
+
+sysplan.md
