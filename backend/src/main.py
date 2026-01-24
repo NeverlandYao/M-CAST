@@ -5,6 +5,10 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import os
 import sys
+
+# 🌟 核心修复：把当前文件所在的目录加入到 Python 搜索路径
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 import subprocess
 import tempfile
 import json
