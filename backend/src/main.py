@@ -11,6 +11,8 @@ import json
 import asyncio
 import re
 from dotenv import load_dotenv
+import uuid
+from database import init_db, AsyncSessionLocal, log_message
 
 from graphs.graph import main_graph
 
@@ -23,6 +25,10 @@ load_dotenv() # 兜底加载当前目录下的 .env
 
 app = FastAPI(title="M-CAST Agent API")
 
+@app.on_event("startup")
+async def startup_event():
+    await init_db()
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -32,6 +38,7 @@ app.add_middleware(
 )
 
 class ChatRequest(BaseModel):
+    user_id: Optional[uuid.UUID] = None
     stage: str
     user_input: str
     context: Optional[str] = ""
@@ -42,6 +49,8 @@ class ChatRequest(BaseModel):
     agent_c_poe_state: Optional[str] = "none"
     agent_c_current_code: Optional[str] = None
     agent_d_reflection_sub_stage: Optional[str] = "recall"
+    agent_e_sub_stage: Optional[str] = "intro"
+    agent_e_quiz_index: Optional[int] = 0
 
 class ChatResponse(BaseModel):
     active_agent_response: str
@@ -60,9 +69,12 @@ class ChatResponse(BaseModel):
     agent_b_concept_diagram: Optional[str] = None
     agent_c_code_template: Optional[str] = None
     agent_e_transfer_tasks: Optional[List[str]] = None
+    agent_e_sub_stage: Optional[str] = None
+    agent_e_quiz_index: Optional[int] = None
 
 class CodeExecutionRequest(BaseModel):
     code: str
+    inputs: List[str] = []
 
 class CodeExecutionResponse(BaseModel):
     output: str
@@ -93,6 +105,12 @@ async def check_syntax(request: SyntaxCheckRequest):
 async def chat(request: ChatRequest):
     # ... (保持原有的 chat 接口不变，供兼容使用)
     try:
+        current_user_id = request.user_id or uuid.uuid4()
+        
+        # Log user input
+        async with AsyncSessionLocal() as session:
+            await log_message(session, current_user_id, "user", request.user_input)
+
         inputs = {
             "stage": request.stage,
             "user_input": request.user_input,
@@ -102,12 +120,21 @@ async def chat(request: ChatRequest):
             "agent_a_turn_count": request.agent_a_turn_count,
             "agent_c_sub_stage": request.agent_c_sub_stage,
             "agent_c_poe_state": request.agent_c_poe_state,
-            "agent_c_current_code": request.agent_c_current_code,
-            "agent_d_reflection_sub_stage": request.agent_d_reflection_sub_stage
+            "agent_c_current_code": request.agent_c_current_code or "",
+            "agent_d_reflection_sub_stage": request.agent_d_reflection_sub_stage,
+            "agent_e_sub_stage": request.agent_e_sub_stage,
+            "agent_e_quiz_index": request.agent_e_quiz_index
         }
         result = await main_graph.ainvoke(inputs)
+        
+        agent_response_content = result.get("active_agent_response", "")
+        
+        # Log agent response
+        async with AsyncSessionLocal() as session:
+            await log_message(session, current_user_id, "agent", agent_response_content)
+
         return ChatResponse(
-            active_agent_response=result.get("active_agent_response", ""),
+            active_agent_response=agent_response_content,
             stage=result.get("stage", request.stage),
             suggestions=result.get("suggestions", []),
             agent_a_sub_stage=result.get("agent_a_sub_stage"),
@@ -122,7 +149,9 @@ async def chat(request: ChatRequest):
             agent_b_flowchart_code=result.get("agent_b_flowchart_code"),
             agent_b_concept_diagram=result.get("agent_b_concept_diagram"),
             agent_c_code_template=result.get("agent_c_code_template"),
-            agent_e_transfer_tasks=result.get("agent_e_transfer_tasks")
+            agent_e_transfer_tasks=result.get("agent_e_transfer_tasks"),
+            agent_e_sub_stage=result.get("agent_e_sub_stage"),
+            agent_e_quiz_index=result.get("agent_e_quiz_index")
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -131,6 +160,15 @@ async def chat(request: ChatRequest):
 async def chat_stream(request: ChatRequest):
     async def event_generator():
         try:
+            current_user_id = request.user_id or uuid.uuid4()
+            
+            # Log user input
+            try:
+                async with AsyncSessionLocal() as session:
+                    await log_message(session, current_user_id, "user", request.user_input)
+            except Exception as e:
+                print(f"Error logging user input: {e}")
+
             inputs = {
                 "stage": request.stage,
                 "user_input": request.user_input,
@@ -140,8 +178,10 @@ async def chat_stream(request: ChatRequest):
                 "agent_a_turn_count": request.agent_a_turn_count,
                 "agent_c_sub_stage": request.agent_c_sub_stage,
                 "agent_c_poe_state": request.agent_c_poe_state,
-                "agent_c_current_code": request.agent_c_current_code,
-                "agent_d_reflection_sub_stage": request.agent_d_reflection_sub_stage
+                "agent_c_current_code": request.agent_c_current_code or "",
+                "agent_d_reflection_sub_stage": request.agent_d_reflection_sub_stage,
+                "agent_e_sub_stage": request.agent_e_sub_stage,
+                "agent_e_quiz_index": request.agent_e_quiz_index
             }
 
             full_text = ""
@@ -192,6 +232,7 @@ async def chat_stream(request: ChatRequest):
                                 response_completed = True
                             else:
                                 if initial_content:
+                                    # 优化：直接发送整个块，不再逐字发送，提高前端显示速度
                                     yield f"data: {json.dumps({'type': 'token', 'content': initial_content})}\n\n"
                     else:
                         # 已经在响应内容中了，寻找结束引号
@@ -214,11 +255,20 @@ async def chat_stream(request: ChatRequest):
                 elif kind == "on_chain_end" and event["name"] == "LangGraph":
                     output = event["data"]["output"]
                     print(f"DEBUG: LangGraph finished. Output keys: {list(output.keys())}")
-                    print(f"DEBUG: active_agent_response: {output.get('active_agent_response', '')[:50]}...")
+                    agent_response = output.get("active_agent_response", "")
+                    print(f"DEBUG: active_agent_response: {agent_response[:50]}...")
+                    
+                    # Log agent response
+                    try:
+                        async with AsyncSessionLocal() as session:
+                            await log_message(session, current_user_id, "agent", agent_response)
+                    except Exception as e:
+                        print(f"Error logging agent response: {e}")
+
                     # 这里的 output 是 GlobalState 的字典形式
                     final_data = {
                         "type": "final",
-                        "active_agent_response": output.get("active_agent_response", ""),
+                        "active_agent_response": agent_response,
                         "stage": output.get("stage", request.stage),
                         "suggestions": output.get("suggestions", []),
                         "agent_a_sub_stage": output.get("agent_a_sub_stage"),
@@ -233,7 +283,9 @@ async def chat_stream(request: ChatRequest):
                         "agent_b_flowchart_code": output.get("agent_b_flowchart_code"),
                         "agent_b_concept_diagram": output.get("agent_b_concept_diagram"),
                         "agent_c_code_template": output.get("agent_c_code_template"),
-                        "agent_e_transfer_tasks": output.get("agent_e_transfer_tasks")
+                        "agent_e_transfer_tasks": output.get("agent_e_transfer_tasks"),
+                        "agent_e_sub_stage": output.get("agent_e_sub_stage"),
+                        "agent_e_quiz_index": output.get("agent_e_quiz_index")
                     }
                     yield f"data: {json.dumps(final_data)}\n\n"
 
@@ -253,10 +305,14 @@ async def execute_code(request: CodeExecutionRequest):
             temp_file_path = f.name
 
         try:
+            # 准备标准输入数据
+            input_data = "\n".join(request.inputs) + "\n" if request.inputs else None
+
             # 运行 Python 代码
             # 注意：在生产环境中应该使用更安全的沙箱环境（如 Docker）
             process = subprocess.run(
                 [sys.executable, temp_file_path],
+                input=input_data, # 注入标准输入
                 capture_output=True,
                 text=True,
                 timeout=5  # 设置 5 秒超时

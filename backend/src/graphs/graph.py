@@ -14,8 +14,8 @@ from graphs.node import (
     merge_results_node,
 )
 
-# 创建状态图，指定工作流的入参和出参
-builder = StateGraph(GlobalState, input_schema=GraphInput, output_schema=GraphOutput)
+# 创建状态图
+builder = StateGraph(GlobalState)
 
 # 添加节点
 # Agent A: 情境体验

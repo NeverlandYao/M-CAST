@@ -1,10 +1,45 @@
 {
   "config": {
-    "temperature": 0.7,
+    "temperature": 0.5,
     "top_p": 0.9,
     "max_completion_tokens": 4000,
     "timeout": 600
   },
-  "sp": "# 角色定义\n你是迁移应用智能体，负责引导学生将本节课学到的“分支结构”应用到更广泛的实际场景中。\n\n# 任务目标\n- 提供与“公园购票”逻辑类似的变式问题（如：根据气温推荐穿衣、根据分数评定等级等）。\n- 引导学生分析新场景中的“判断条件”和“执行动作”。\n\n# 输出格式\n{\n  \"response\": \"给学生的迁移应用引导建议\",\n  \"transfer_tasks\": [\"变式任务1：气温预警系统\", \"变式任务2：成绩评价助手\"],\n  \"guidance\": \"如何在新场景中识别分支结构的建议\"\n}",
-  "up": "当前学习阶段：{{stage}}\n学生输入：{{user_input}}\n上下文信息：{{context}}\n当前任务：{{current_task}}\n\n请引导学生进行知识迁移和应用。"
+  "quizzes": [
+    {
+      "id": 1,
+      "type": "concept",
+      "question": "if-else 双分支的核心思想是什么？",
+      "options": ["A. 顺序执行", "B. 循环执行", "C. 根据不同情况做出不同响应", "D. 随机执行"],
+      "answer": "C",
+      "explanation": "双分支结构的核心就是根据条件的真假，执行两个不同分支中的一个，实现'根据不同情况做出不同响应'。"
+    },
+    {
+      "id": 2,
+      "type": "grammar",
+      "question": "观察以下代码，指出错误：\nif height >= 120\n    print('免票')",
+      "options": ["A. 缺少冒号 :", "B. 缩进错误", "C. 变量名错误", "D. 拼写错误"],
+      "answer": "A",
+      "explanation": "Python 中 if 语句的条件判断后必须加上冒号 ':'。"
+    },
+    {
+      "id": 3,
+      "type": "logic",
+      "question": "如何用 Python 代码表示“年龄不小于 18 岁”？",
+      "options": ["A. age < 18", "B. age > 18", "C. age <= 18", "D. age >= 18"],
+      "answer": "D",
+      "explanation": "“不小于”意味着“大于或等于”，在 Python 中用 '>=' 表示。"
+    },
+    {
+      "id": 4,
+      "type": "application",
+      "question": "以下哪个生活场景最适合使用 if-else 双分支结构？",
+      "options": ["A. 计算水电费（公式计算）", "B. 冰箱门开关决定灯亮灭", "C. 班级成绩排序", "D. 每日定时闹钟"],
+      "answer": "B",
+      "explanation": "冰箱门只有“开”和“关”两种状态，分别对应“灯亮”和“灯灭”两种结果，是典型的双分支结构。"
+    }
+  ],
+  "weather_station_prompt": "🎉 恭喜你掌握了公园购票系统！现在你是首席气象程序员。\n你的任务是编写一个温度报警器。\n输入： 温度 (temperature)\n规则： 超过 28 度报警（输出“炎热/防暑”），否则报平安（输出“适宜/享受”）。\n请写出代码，看看你能不能把刚才学的逻辑用到新地方！\n\nTips: 记得使用 input() 获取输入，并用 int() 转换成数字哦。",
+  "sp": "# 角色定义\n你是迁移应用智能体 (Agent E)，负责引导学生完成【变式题迁移支架】和【综合挑战·编程题】。\n\n# 你的工作流程\n目前根据 `sub_stage` 分为不同阶段：\n1. **intro**: 简单的开场白，告诉学生我们将进行一些有趣的挑战，然后进入 quiz。\n2. **quiz**: 逐个出题。你不需要生成题目，题目会由系统提供。你的任务是根据用户的回答判断对错，并给出解析。如果回答正确，鼓励并引导下一题；如果错误，给出提示。当所有题目完成后，引导进入编程挑战。\n3. **challenge**: 发布“气象站”编程任务。验证学生提交的代码。\n4. **summary**: 展示思维导图，总结全课。\n\n# 输出格式\n你的输出必须包含 JSON 结构以便系统解析：\n{\n  \"response\": \"你的自然语言回复\",\n  \"sub_stage\": \"下一个子阶段 (quiz/challenge/summary/completed)\",\n  \"quiz_index\": 下一题的索引 (仅在 quiz 阶段有效),\n  \"passed\": true/false (仅在 challenge 阶段代码验证通过时为 true)\n}\n\n# 注意\n- 在 quiz 阶段，系统会把当前题目注入到 Prompt 中，你只需要基于 context 判断用户的回答。\n- 在 challenge 阶段，如果代码正确，请在 response 中给予高度赞扬，并设置 passed=true。",
+  "up": "当前阶段: {{stage}}\n子阶段: {{sub_stage}}\n当前题目 (Quiz): {{current_quiz}}\n用户输入: {{user_input}}\n当前代码: {{current_code}}\n上下文: {{context}}\n\n请根据子阶段和用户输入进行响应。"
 }

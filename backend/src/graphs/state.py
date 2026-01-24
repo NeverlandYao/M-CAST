@@ -10,6 +10,9 @@ class GlobalState(BaseModel):
     context: str = Field(default="", description="上下文信息（之前的对话、已学内容等）")
     current_task: str = Field(default="", description="当前任务描述")
     
+    active_agent_response: str = Field(default="", description="当前激活的智能体响应内容")
+    suggestions: List[str] = Field(default=[], description="其他建议或提示")
+    
     # Agent A的响应结果
     agent_a_response: str = Field(default="", description="情境体验智能体的响应")
     agent_a_scenario_text: str = Field(default="", description="生成的情境对话文本")
@@ -40,13 +43,15 @@ class GlobalState(BaseModel):
     # Agent D的响应结果 (评估反思)
     agent_d_response: str = Field(default="", description="评估反思智能体的响应")
     agent_d_evaluation_scores: Dict[str, int] = Field(default_factory=dict, description="多维评分（function, logic, innovation, norms）")
-    agent_d_reflection_sub_stage: str = Field(default="recall", description="反思子阶段: recall, diagnose, optimize")
+    agent_d_reflection_sub_stage: str = Field(default="scoring", description="反思子阶段: scoring, ready_to_reflect, recall, diagnose, optimize, completed")
     agent_d_reflection_questions: List[str] = Field(default=[], description="反思引导问题")
     agent_d_variant_problems: List[str] = Field(default=[], description="变式应用题")
     agent_d_knowledge_summary: str = Field(default="", description="全课知识总结")
 
     # Agent E的响应结果 (迁移应用)
     agent_e_response: str = Field(default="", description="迁移应用智能体的响应")
+    agent_e_sub_stage: str = Field(default="intro", description="迁移子阶段: intro, quiz, challenge, summary")
+    agent_e_quiz_index: int = Field(default=0, description="当前变式题索引")
     agent_e_transfer_tasks: List[str] = Field(default=[], description="迁移任务列表")
     agent_e_guidance: str = Field(default="", description="迁移应用引导内容")
 
@@ -63,6 +68,8 @@ class GraphInput(BaseModel):
     agent_c_poe_state: Optional[str] = None
     agent_c_current_code: Optional[str] = None
     agent_d_reflection_sub_stage: Optional[str] = None
+    agent_e_sub_stage: Optional[str] = None
+    agent_e_quiz_index: Optional[int] = None
 
 
 class GraphOutput(BaseModel):
@@ -78,11 +85,13 @@ class GraphOutput(BaseModel):
     agent_c_flowchart_code: Optional[str] = None
     agent_d_reflection_sub_stage: Optional[str] = None
     agent_d_evaluation_scores: Optional[Dict[str, int]] = None
+    agent_e_sub_stage: Optional[str] = None
     agent_a_scenario_text: Optional[str] = None
     agent_b_flowchart_code: Optional[str] = None
     agent_b_concept_diagram: Optional[str] = None
     agent_c_code_template: Optional[str] = None
     agent_e_transfer_tasks: Optional[List[str]] = None
+    agent_e_quiz_index: Optional[int] = None
 
 
 # ==================== Agent Input/Output Models ====================
@@ -157,9 +166,14 @@ class AgentEInput(BaseModel):
     user_input: str
     context: str
     current_task: str
+    agent_e_sub_stage: str
+    agent_e_quiz_index: int
+    agent_c_current_code: str  # Needed for code challenge verification
 
 class AgentEOutput(BaseModel):
     agent_e_response: str = ""
+    agent_e_sub_stage: str = "intro"
+    agent_e_quiz_index: int = 0
     agent_e_transfer_tasks: List[str] = []
     agent_e_guidance: str = ""
 
@@ -176,14 +190,16 @@ class MergeNodeInput(BaseModel):
     agent_c_sub_stage: str = "flowchart"
     agent_c_poe_state: str = "none"
     agent_c_current_code: str = ""
-    agent_d_reflection_sub_stage: str = "recall"
+    agent_d_reflection_sub_stage: str = "scoring"
     agent_d_evaluation_scores: Dict[str, int] = {}
+    agent_e_sub_stage: str = "intro"
     agent_a_scenario_text: str = ""
     agent_b_flowchart_code: str = ""
     agent_b_concept_diagram: str = ""
     agent_c_code_template: str = ""
     agent_c_flowchart_code: str = ""
     agent_e_transfer_tasks: List[str] = []
+    agent_e_quiz_index: int = 0
 
 class MergeNodeOutput(BaseModel):
     active_agent_response: str
@@ -196,6 +212,7 @@ class MergeNodeOutput(BaseModel):
     agent_c_current_code: Optional[str] = None
     agent_d_reflection_sub_stage: Optional[str] = None
     agent_d_evaluation_scores: Optional[Dict[str, int]] = None
+    agent_e_sub_stage: Optional[str] = None
     agent_a_scenario_text: Optional[str] = None
     agent_b_flowchart_code: Optional[str] = None
     agent_b_concept_diagram: Optional[str] = None

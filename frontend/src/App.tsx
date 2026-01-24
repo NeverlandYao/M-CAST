@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import { ChatInput } from './components/ChatInput';
 import { 
-  Send, 
   ArrowRight,
   User, 
   Bot, 
@@ -16,12 +16,8 @@ import {
   Copy,
   Download,
   Layout,
-  Target,
   Star,
-  Sparkles,
-  Zap,
-  MessageCircle,
-  Square
+  Zap
 } from 'lucide-react';
 import mermaid from 'mermaid';
 import ReactMarkdown from 'react-markdown';
@@ -68,25 +64,6 @@ interface Message {
   content: string;
 }
 
-interface BackendResponse {
-  active_agent_response: string;
-  stage: string;
-  suggestions: string[];
-  agent_a_sub_stage?: string;
-  agent_a_turn_count?: number;
-  agent_a_scenario_text?: string;
-  agent_c_sub_stage?: string;
-  agent_c_poe_state?: string;
-  agent_c_current_code?: string;
-  agent_d_reflection_sub_stage?: string;
-  agent_d_evaluation_scores?: Record<string, number>;
-  agent_b_flowchart_code?: string;
-  agent_b_concept_diagram?: string;
-  agent_c_code_template?: string;
-  agent_c_flowchart_code?: string;
-  agent_e_transfer_tasks?: string[];
-}
-
 const STAGES = [
   { id: 'scenario', name: '情境体验', icon: Layout },
   { id: 'knowledge', name: '新知学习', icon: Lightbulb },
@@ -97,7 +74,6 @@ const STAGES = [
 
 function App() {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
   const [stage, setStage] = useState('scenario');
   const [agentASubStage, setAgentASubStage] = useState('presentation');
   const [agentATurnCount, setAgentATurnCount] = useState(0);
@@ -105,6 +81,8 @@ function App() {
   const [agentCPoeState, setAgentCPoeState] = useState('none');
   const [agentDReflectionSubStage, setAgentDReflectionSubStage] = useState('recall');
   const [evaluationScores, setEvaluationScores] = useState<Record<string, number> | null>(null);
+  const [agentESubStage, setAgentESubStage] = useState('intro');
+  const [agentEQuizIndex, setAgentEQuizIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [started, setStarted] = useState(false);
   const [visualData, setVisualData] = useState<{
@@ -188,12 +166,11 @@ function App() {
   };
 
   const handleSend = async (textOverride?: string, stageOverride?: string) => {
-    const textToSend = textOverride || input;
+    const textToSend = textOverride || '';
     if (!textToSend.trim() || loading) return;
 
     const userMessage = textToSend.trim();
     setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
-    setInput('');
     setLoading(true);
 
     // 为即将到来的 AI 回复创建一个空消息占位
@@ -219,7 +196,9 @@ function App() {
           agent_c_sub_stage: agentCSubStage,
           agent_c_poe_state: agentCPoeState,
           agent_c_current_code: code,
-          agent_d_reflection_sub_stage: agentDReflectionSubStage
+          agent_d_reflection_sub_stage: agentDReflectionSubStage,
+          agent_e_sub_stage: agentESubStage,
+          agent_e_quiz_index: agentEQuizIndex
         })
       });
 
@@ -306,6 +285,12 @@ function App() {
                 if (data.agent_d_evaluation_scores) {
                   setEvaluationScores(data.agent_d_evaluation_scores);
                 }
+                if (data.agent_e_sub_stage) {
+                  setAgentESubStage(data.agent_e_sub_stage);
+                }
+                if (data.agent_e_quiz_index !== undefined) {
+                  setAgentEQuizIndex(data.agent_e_quiz_index);
+                }
                 setVisualData(prev => ({
                   ...prev,
                   scenario: data.agent_a_scenario_text || prev.scenario,
@@ -370,8 +355,30 @@ function App() {
     setOutput('正在运行...');
 
     try {
+      // 预处理 input() 函数调用
+      const inputs: string[] = [];
+      // 简单的正则匹配 input("...") 或 input('...') 或 input()
+      // 注意：这无法处理复杂的嵌套或注释中的 input，但对教学场景够用了
+      const inputRegex = /input\s*\(\s*(?:['"]([^'"]*)['"])?\s*\)/g;
+      let match;
+      // 重置 lastIndex 以防万一
+      inputRegex.lastIndex = 0;
+      
+      // 我们需要克隆一个 regex 实例或者手动循环，因为 exec 是有状态的
+      while ((match = inputRegex.exec(code)) !== null) {
+        const promptText = match[1] || "请输入数据";
+        const userInput = window.prompt(`程序正在请求输入：\n${promptText}`);
+        
+        if (userInput === null) {
+          setOutput('运行已取消。');
+          setExecuting(false);
+          return;
+        }
+        inputs.push(userInput);
+      }
+
       const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-      const response = await axios.post(`${apiBaseUrl}/execute`, { code });
+      const response = await axios.post(`${apiBaseUrl}/execute`, { code, inputs });
       let realOutput = response.data.output || '';
       if (response.data.error) {
         const errorLines = response.data.error.split('\n');
@@ -405,8 +412,24 @@ function App() {
     setOutput('正在运行真实代码...');
 
     try {
+      // 预处理 input() 函数调用 (POE 阶段)
+      const inputs: string[] = [];
+      const inputRegex = /input\s*\(\s*(?:['"]([^'"]*)['"])?\s*\)/g;
+      let match;
+      inputRegex.lastIndex = 0;
+      while ((match = inputRegex.exec(code)) !== null) {
+        const promptText = match[1] || "请输入数据";
+        const userInput = window.prompt(`程序正在请求输入：\n${promptText}`);
+        if (userInput === null) {
+          setOutput('运行已取消。');
+          setExecuting(false);
+          return;
+        }
+        inputs.push(userInput);
+      }
+
       const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-      const response = await axios.post(`${apiBaseUrl}/execute`, { code });
+      const response = await axios.post(`${apiBaseUrl}/execute`, { code, inputs });
       let realOutput = response.data.output || '';
       if (response.data.error) {
         // 提取报错的关键信息，避免冗长的 Traceback
@@ -428,6 +451,25 @@ function App() {
     } finally {
       setExecuting(false);
     }
+  };
+
+  const handleDownloadChat = () => {
+    if (messages.length === 0) return;
+    
+    const chatContent = messages.map(m => {
+      const role = m.role === 'user' ? '用户' : '智能体';
+      return `### ${role}:\n${m.content}\n`;
+    }).join('\n---\n\n');
+    
+    const blob = new Blob([chatContent], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `M-CAST_对话记录_${new Date().toLocaleDateString()}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const handleReviewCode = () => {
@@ -546,21 +588,21 @@ function App() {
           <p className="text-[10px] text-app-muted font-medium">基于 AI 的智能陪伴式教学模式</p>
         </div>
         <div className="flex items-center gap-6">
-          <div className="flex items-center gap-3 text-xs text-app-muted">
-            <span className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-app-card border border-app-border">
-              <Target size={12} className="text-primary" /> 4个引导阶段
-            </span>
-            <span className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-app-card border border-app-border">
-              <Sparkles size={12} className="text-accent-purple" /> 实时编程
-            </span>
-            <button className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-app-card border border-app-border hover:bg-app-bg transition-colors">
-              <Download size={12} /> 下载代码
+          <div className="flex items-center gap-2">
+            <button 
+              className="p-2 text-slate-400 hover:text-primary hover:bg-white rounded-lg transition-all"
+              onClick={handleDownloadChat}
+              title="下载对话记录"
+            >
+              <Download size={20} />
             </button>
-          </div>
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-accent-purple p-0.5">
-            <div className="w-full h-full rounded-full bg-app-bg flex items-center justify-center">
-              <User size={16} />
-            </div>
+            <button 
+              className="p-2 text-slate-400 hover:text-red-500 hover:bg-white rounded-lg transition-all"
+              onClick={() => window.location.reload()}
+              title="重启会话"
+            >
+              <RotateCcw size={20} />
+            </button>
           </div>
         </div>
       </header>
@@ -717,52 +759,14 @@ function App() {
                 </div>
 
                 {/* Chat Input */}
-                <div className="p-4 bg-app-card/80 border-t border-app-border backdrop-blur-md">
-                  <div className="relative group">
-                    <textarea
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSend();
-                        }
-                      }}
-                      disabled={!started || (loading && !abortControllerRef.current)}
-                      placeholder={started ? "输入你的回答..." : "请点击上方'开始学习'开始探索"}
-                      className="w-full bg-app-bg border border-app-border rounded-2xl px-5 py-4 pr-14 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-none shadow-inner scrollbar-none"
-                      rows={2}
-                    />
-                    {loading ? (
-                      <button
-                        onClick={handleStop}
-                        className="absolute right-3 bottom-3 p-2.5 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all shadow-lg shadow-red-200"
-                        title="停止生成"
-                      >
-                        <Square size={18} fill="currentColor" />
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleSend()}
-                        disabled={!input.trim() || loading}
-                        className="absolute right-3 bottom-3 p-2.5 bg-primary text-white rounded-xl hover:bg-primary-hover disabled:opacity-50 disabled:grayscale transition-all shadow-lg shadow-primary/20"
-                      >
-                        <Send size={18} />
-                      </button>
-                    )}
-                  </div>
-                  <div className="mt-2 flex items-center justify-between px-2">
-                    <div className="flex items-center gap-4">
-                      <button className="text-[10px] text-app-muted flex items-center gap-1.5 hover:text-app-text transition-colors">
-                        <HelpCircle size={12} /> 需要求助？
-                      </button>
-                      <button className="text-[10px] text-app-muted flex items-center gap-1.5 hover:text-app-text transition-colors">
-                        <MessageCircle size={12} /> 反馈
-                      </button>
-                    </div>
-                    <span className="text-[10px] text-app-muted/50 font-mono tracking-wider">Enter 发送, Shift+Enter 换行</span>
-                  </div>
-                </div>
+                <ChatInput 
+                  onSend={handleSend}
+                  loading={loading}
+                  started={started}
+                  onStop={handleStop}
+                  agentDReflectionSubStage={agentDReflectionSubStage}
+                  stage={stage}
+                />
               </div>
             </div>
           </ResizablePanel>
@@ -938,7 +942,53 @@ function App() {
                     </div>
                   </div>
                   
-                  <div className="flex-1 grid grid-cols-2 overflow-hidden">
+                  {stage === 'transfer' ? (
+                    <div className="flex-1 flex flex-col items-center justify-center bg-slate-50/50">
+                       <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center mb-6 relative">
+                         <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full animate-pulse" />
+                         <Star size={40} className="text-primary relative z-10" />
+                       </div>
+                       <h3 className="text-xl font-bold text-slate-800 mb-2">迁移应用阶段</h3>
+                       <p className="text-sm text-app-muted max-w-md text-center mb-8 leading-relaxed">
+                         现在我们将把学到的知识应用到新的场景中。请跟随 AI 导师的引导，完成变式挑战。
+                       </p>
+                       <div className="flex gap-4">
+                         <div className={cn(
+                           "px-5 py-3 rounded-xl border text-sm font-bold transition-all",
+                           agentESubStage === 'intro' 
+                             ? "bg-white border-primary text-primary shadow-lg shadow-primary/10 scale-105" 
+                             : "bg-slate-100 border-transparent text-slate-400"
+                         )}>
+                           1. 引入
+                         </div>
+                         <div className={cn(
+                           "px-5 py-3 rounded-xl border text-sm font-bold transition-all",
+                           agentESubStage === 'quiz' 
+                             ? "bg-white border-primary text-primary shadow-lg shadow-primary/10 scale-105" 
+                             : "bg-slate-100 border-transparent text-slate-400"
+                         )}>
+                           2. 变式测验 {agentESubStage === 'quiz' && `(${agentEQuizIndex + 1})`}
+                         </div>
+                         <div className={cn(
+                           "px-5 py-3 rounded-xl border text-sm font-bold transition-all",
+                           agentESubStage === 'challenge' 
+                             ? "bg-white border-primary text-primary shadow-lg shadow-primary/10 scale-105" 
+                             : "bg-slate-100 border-transparent text-slate-400"
+                         )}>
+                           3. 综合挑战
+                         </div>
+                         <div className={cn(
+                            "px-5 py-3 rounded-xl border text-sm font-bold transition-all",
+                            agentESubStage === 'summary' 
+                              ? "bg-white border-primary text-primary shadow-lg shadow-primary/10 scale-105" 
+                              : "bg-slate-100 border-transparent text-slate-400"
+                          )}>
+                            4. 总结
+                          </div>
+                       </div>
+                    </div>
+                  ) : (
+                    <div className="flex-1 grid grid-cols-2 overflow-hidden">
                     {/* Scenario / Concept Diagram View */}
                     <div className="border-r border-app-border p-6 flex flex-col overflow-hidden">
                       <div className="flex items-center justify-between mb-4">
@@ -1001,6 +1051,7 @@ function App() {
                       </div>
                     </div>
                   </div>
+                  )}
 
                   {/* Assessment Bar */}
                   <div className="h-10 bg-app-bg border-t border-app-border px-6 flex items-center justify-between">

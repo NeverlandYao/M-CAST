@@ -8,3 +8,7 @@ jinja2
 python-dotenv
 python-multipart
 langchain-core
+sqlalchemy
+psycopg2-binary
+asyncpg
+greenlet
