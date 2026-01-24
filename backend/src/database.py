@@ -17,11 +17,15 @@ load_dotenv() # Fallback
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
-    raise ValueError("DATABASE_URL environment variable is not set")
-
-# Ensure the driver is correct for async
-if DATABASE_URL.startswith("postgresql://"):
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+    print("WARNING: DATABASE_URL environment variable is not set. Database operations will fail.")
+    # Fallback to prevent immediate crash on import, will fail on connection
+    DATABASE_URL = "postgresql+asyncpg://user:password@localhost/dbname"
+else:
+    # Ensure the driver is correct for async
+    if DATABASE_URL.startswith("postgresql://"):
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
 
 engine = create_async_engine(DATABASE_URL, echo=True)
 AsyncSessionLocal = sessionmaker(

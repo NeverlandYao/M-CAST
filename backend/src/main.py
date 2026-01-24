@@ -27,7 +27,24 @@ app = FastAPI(title="M-CAST Agent API")
 
 @app.on_event("startup")
 async def startup_event():
-    await init_db()
+    print("DEBUG: Startup event triggered")
+    print(f"DEBUG: Current working directory: {os.getcwd()}")
+    print(f"DEBUG: Files in current directory: {os.listdir('.')}")
+    try:
+        # Check if backend/config exists relative to here
+        base_dir = os.path.dirname(os.path.dirname(__file__))
+        config_dir = os.path.join(base_dir, "config")
+        print(f"DEBUG: Checking config dir at: {config_dir}")
+        if os.path.exists(config_dir):
+             print(f"DEBUG: Config dir contents: {os.listdir(config_dir)}")
+        else:
+             print("DEBUG: Config dir NOT found!")
+             
+        await init_db()
+        print("DEBUG: Database initialized successfully")
+    except Exception as e:
+        print(f"ERROR: Startup failed: {e}")
+        # We don't raise here to allow the app to start and show logs/health check
 
 app.add_middleware(
     CORSMiddleware,
