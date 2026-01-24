@@ -128,7 +128,7 @@ function App() {
 
     const timer = setTimeout(async () => {
       try {
-        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
         const response = await axios.post(`${apiBaseUrl}/check_syntax`, { code });
         if (!response.data.is_valid) {
           setSyntaxErrors(response.data.errors);
@@ -180,7 +180,7 @@ function App() {
     abortControllerRef.current = abortController;
 
     try {
-      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
       
       const response = await fetch(`${apiBaseUrl}/chat_stream`, {
         method: 'POST',
@@ -377,7 +377,7 @@ function App() {
         inputs.push(userInput);
       }
 
-      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
       const response = await axios.post(`${apiBaseUrl}/execute`, { code, inputs });
       let realOutput = response.data.output || '';
       if (response.data.error) {

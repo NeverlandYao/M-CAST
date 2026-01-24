@@ -112,7 +112,7 @@ class SyntaxCheckResponse(BaseModel):
     is_valid: bool
     errors: List[str] = []
 
-@app.post("/check_syntax", response_model=SyntaxCheckResponse)
+@app.post("/api/check_syntax", response_model=SyntaxCheckResponse)
 async def check_syntax(request: SyntaxCheckRequest):
     try:
         import ast
@@ -126,7 +126,7 @@ async def check_syntax(request: SyntaxCheckRequest):
     except Exception as e:
         return SyntaxCheckResponse(is_valid=False, errors=[str(e)])
 
-@app.post("/chat", response_model=ChatResponse)
+@app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     # ... (保持原有的 chat 接口不变，供兼容使用)
     try:
@@ -181,7 +181,7 @@ async def chat(request: ChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/chat_stream")
+@app.post("/api/chat_stream")
 async def chat_stream(request: ChatRequest):
     async def event_generator():
         try:
