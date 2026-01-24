@@ -58,6 +58,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+async def root():
+    return {"message": "Hello! LogicLoom is running!"}
+
 class ChatRequest(BaseModel):
     user_id: Optional[uuid.UUID] = None
     stage: str
