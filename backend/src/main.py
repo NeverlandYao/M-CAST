@@ -64,6 +64,20 @@ app.add_middleware(
 async def root():
     return {"message": "Hello! LogicLoom is running!"}
 
+@app.get("/api/test_db")
+async def test_db():
+    try:
+        async with AsyncSessionLocal() as session:
+            # Try to insert a test log
+            test_id = str(uuid.uuid4())
+            await log_message(session, uuid.uuid4(), "system", f"DB Connection Test {test_id}", group_type="test", student_id="TEST_SYS")
+            return {"status": "success", "message": "Database connection and write successful", "test_id": test_id}
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"DB Test Error: {e}")
+        return {"status": "error", "message": str(e), "trace": error_trace, "env_db_url_set": bool(os.getenv("DATABASE_URL"))}
+
 class ChatRequest(BaseModel):
     user_id: Optional[uuid.UUID] = None
     student_id: Optional[str] = None  # Added student_id

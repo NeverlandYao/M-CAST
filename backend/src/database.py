@@ -27,7 +27,18 @@ else:
     elif DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
 
-engine = create_async_engine(DATABASE_URL, echo=True)
+    # Mask password for logging
+    safe_url = DATABASE_URL.split("@")[-1] if "@" in DATABASE_URL else "..."
+    print(f"DEBUG: DATABASE_URL loaded (host/db): {safe_url}")
+
+# Create engine with pre-ping to handle closed connections
+engine = create_async_engine(
+    DATABASE_URL, 
+    echo=True,
+    pool_pre_ping=True,
+    # If using Supabase Transaction Pooler (port 6543), un-comment the next line:
+    # connect_args={"server_settings": {"jit": "off"}} 
+)
 AsyncSessionLocal = sessionmaker(
     bind=engine,
     class_=AsyncSession,
