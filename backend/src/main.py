@@ -159,8 +159,13 @@ async def chat(request: ChatRequest):
         agent_response_content = result.get("active_agent_response", "")
         
         # Log agent response
-        async with AsyncSessionLocal() as session:
-            await log_message(session, current_user_id, "agent", agent_response_content)
+        try:
+            print(f"DEBUG: Attempting to log agent response (Experimental Group).")
+            async with AsyncSessionLocal() as session:
+                await log_message(session, current_user_id, "agent", agent_response_content)
+            print("DEBUG: Agent response logged successfully.")
+        except Exception as e:
+            print(f"Error logging agent response: {e}")
 
         return ChatResponse(
             active_agent_response=agent_response_content,
@@ -195,8 +200,10 @@ async def chat_stream(request: ChatRequest):
             
             # Log user input with group_type and student_id
             try:
+                print(f"DEBUG: Attempting to log user input. UserID={current_user_id}, Group={request.group}, StudentID={request.student_id}")
                 async with AsyncSessionLocal() as session:
                     await log_message(session, current_user_id, "user", request.user_input, group_type=request.group, student_id=request.student_id)
+                print("DEBUG: User input logged successfully.")
             except Exception as e:
                 print(f"Error logging user input: {e}")
 
@@ -230,8 +237,10 @@ async def chat_stream(request: ChatRequest):
                 
                 # Log agent response
                 try:
+                    print(f"DEBUG: Attempting to log agent response (Control Group).")
                     async with AsyncSessionLocal() as session:
                         await log_message(session, current_user_id, "agent", accumulated_content, group_type=request.group, student_id=request.student_id)
+                    print("DEBUG: Agent response logged successfully.")
                 except Exception as e:
                     print(f"Error logging agent response: {e}")
 

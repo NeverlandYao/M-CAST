@@ -76,17 +76,29 @@ const STAGES = [
 function App() {
   const urlParams = new URLSearchParams(window.location.search);
   const isControlGroup = urlParams.get('mode') === 'control';
-  const [studentId, setStudentId] = useState('');
-  const [showLogin, setShowLogin] = useState(false);
+  
+  // Use lazy initialization to read from localStorage immediately
+  const [studentId, setStudentId] = useState(() => localStorage.getItem('student_id') || '');
+  const [showLogin, setShowLogin] = useState(() => !localStorage.getItem('student_id'));
+  
   const [messages, setMessages] = useState<Message[]>([]);
 
+  // Removed useEffect for checking localStorage since we do it in initialization
+  // Add storage event listener to sync across tabs
   useEffect(() => {
-    const savedId = localStorage.getItem('student_id');
-    if (savedId) {
-      setStudentId(savedId);
-    } else {
-      setShowLogin(true);
-    }
+    const handleStorageChange = () => {
+      const savedId = localStorage.getItem('student_id');
+      if (savedId) {
+        setStudentId(savedId);
+        setShowLogin(false);
+      } else {
+        setStudentId('');
+        setShowLogin(true);
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   const handleLogin = (id: string) => {
