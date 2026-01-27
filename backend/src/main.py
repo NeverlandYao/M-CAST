@@ -17,6 +17,8 @@ import re
 from dotenv import load_dotenv
 import uuid
 from database import init_db, AsyncSessionLocal, log_message
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import SystemMessage, HumanMessage
 
 from graphs.graph import main_graph
 
@@ -64,6 +66,7 @@ async def root():
 
 class ChatRequest(BaseModel):
     user_id: Optional[uuid.UUID] = None
+    student_id: Optional[str] = None  # Added student_id
     stage: str
     user_input: str
     context: Optional[str] = ""
@@ -76,6 +79,7 @@ class ChatRequest(BaseModel):
     agent_d_reflection_sub_stage: Optional[str] = "recall"
     agent_e_sub_stage: Optional[str] = "intro"
     agent_e_quiz_index: Optional[int] = 0
+    group: Optional[str] = "experimental"
 
 class ChatResponse(BaseModel):
     active_agent_response: str
@@ -182,17 +186,64 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/chat_stream")
+@app.post("/chat_stream")
 async def chat_stream(request: ChatRequest):
+    print(f"Received request: group={request.group}, stage={request.stage}")
     async def event_generator():
         try:
             current_user_id = request.user_id or uuid.uuid4()
             
-            # Log user input
+            # Log user input with group_type and student_id
             try:
                 async with AsyncSessionLocal() as session:
-                    await log_message(session, current_user_id, "user", request.user_input)
+                    await log_message(session, current_user_id, "user", request.user_input, group_type=request.group, student_id=request.student_id)
             except Exception as e:
                 print(f"Error logging user input: {e}")
+
+            # === Control Group Logic ===
+            if request.group == "control":
+                llm = ChatOpenAI(
+                    model=os.getenv("LLM_MODEL", "Qwen/Qwen2.5-72B-Instruct"),
+                    temperature=0.7,
+                    api_key=os.getenv("OPENAI_API_KEY"),
+                    base_url=os.getenv("OPENAI_API_BASE")
+                )
+                
+                system_prompt = f"""你是一个友好的 Python 编程助手。
+你的任务是回答学生的问题，帮助他们学习 Python 编程。
+当前学习阶段：{request.stage}。
+请直接回答问题，不需要遵循特定的教学流程或脚手架。
+保持语气亲切、鼓励。"""
+                
+                # Construct messages with context
+                messages = [SystemMessage(content=system_prompt)]
+                if request.context:
+                    messages.append(HumanMessage(content=f"Previous conversation:\n{request.context}"))
+                messages.append(HumanMessage(content=request.user_input))
+
+                accumulated_content = ""
+                async for chunk in llm.astream(messages):
+                    content = chunk.content
+                    if content:
+                        accumulated_content += content
+                        yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+                
+                # Log agent response
+                try:
+                    async with AsyncSessionLocal() as session:
+                        await log_message(session, current_user_id, "agent", accumulated_content, group_type=request.group, student_id=request.student_id)
+                except Exception as e:
+                    print(f"Error logging agent response: {e}")
+
+                final_data = {
+                    "type": "final",
+                    "active_agent_response": accumulated_content,
+                    "stage": request.stage,
+                    "suggestions": []
+                }
+                yield f"data: {json.dumps(final_data)}\n\n"
+                yield "data: [DONE]\n\n"
+                return
 
             inputs = {
                 "stage": request.stage,
@@ -286,7 +337,7 @@ async def chat_stream(request: ChatRequest):
                     # Log agent response
                     try:
                         async with AsyncSessionLocal() as session:
-                            await log_message(session, current_user_id, "agent", agent_response)
+                            await log_message(session, current_user_id, "agent", agent_response, group_type=request.group, student_id=request.student_id)
                     except Exception as e:
                         print(f"Error logging agent response: {e}")
 

@@ -41,8 +41,21 @@ class ChatLog(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(UUID(as_uuid=True), default=uuid.uuid4)
+    student_id = Column(String, nullable=True)  # Added student_id
     role = Column(String)  # 'user' or 'agent'
     content = Column(Text)
+    group_type = Column(String, default="experimental")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+class ControlChatLog(Base):
+    __tablename__ = "control_chat_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(UUID(as_uuid=True), default=uuid.uuid4)
+    student_id = Column(String, nullable=True)
+    role = Column(String)  # 'user' or 'agent'
+    content = Column(Text)
+    group_type = Column(String, default="control")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 async def init_db():
@@ -54,9 +67,13 @@ async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
 
-async def log_message(session: AsyncSession, user_id: uuid.UUID, role: str, content: str):
+async def log_message(session: AsyncSession, user_id: uuid.UUID, role: str, content: str, group_type: str = "experimental", student_id: str = None):
     try:
-        new_log = ChatLog(user_id=user_id, role=role, content=content)
+        if group_type == "control":
+            new_log = ControlChatLog(user_id=user_id, role=role, content=content, group_type=group_type, student_id=student_id)
+        else:
+            new_log = ChatLog(user_id=user_id, role=role, content=content, group_type=group_type, student_id=student_id)
+        
         session.add(new_log)
         await session.commit()
     except Exception as e:

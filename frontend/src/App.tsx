@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { ChatInput } from './components/ChatInput';
+import { LoginModal } from './components/LoginModal';
 import { 
   ArrowRight,
   User, 
@@ -73,7 +74,27 @@ const STAGES = [
 ];
 
 function App() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const isControlGroup = urlParams.get('mode') === 'control';
+  const [studentId, setStudentId] = useState('');
+  const [showLogin, setShowLogin] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
+
+  useEffect(() => {
+    const savedId = localStorage.getItem('student_id');
+    if (savedId) {
+      setStudentId(savedId);
+    } else {
+      setShowLogin(true);
+    }
+  }, []);
+
+  const handleLogin = (id: string) => {
+    localStorage.setItem('student_id', id);
+    setStudentId(id);
+    setShowLogin(false);
+  };
+
   const [stage, setStage] = useState('scenario');
   const [agentASubStage, setAgentASubStage] = useState('presentation');
   const [agentATurnCount, setAgentATurnCount] = useState(0);
@@ -189,6 +210,8 @@ function App() {
         body: JSON.stringify({
           stage: stageOverride || stage,
           user_input: userMessage,
+          group: isControlGroup ? "control" : "experimental",
+          student_id: studentId,
           context: messages.map(m => `${m.role}: ${m.content}`).join('\n'),
           current_task: '公园购票',
           agent_a_sub_stage: agentASubStage,
@@ -339,7 +362,7 @@ function App() {
     if (!code.trim() || executing) return;
 
     // 强制拦截：只要是在 coding 阶段，且没有经过 AI 允许（即不在 observe 状态），就必须先问 AI
-    if (stage === 'coding' && agentCPoeState !== 'observe') {
+    if (!isControlGroup && stage === 'coding' && agentCPoeState !== 'observe') {
       if (agentCSubStage === 'debugging' && agentCPoeState === 'predict') {
         setShowPoeDialog(true);
       } else {
@@ -584,7 +607,7 @@ function App() {
       {/* Top Header */}
       <header className="h-16 flex items-center justify-between px-8 bg-app-bg border-b border-app-border">
         <div className="flex flex-col">
-          <h1 className="text-xl font-bold tracking-tight">M-CAST智能教学系统</h1>
+          <h1 className="text-xl font-bold tracking-tight">{isControlGroup ? 'Python 自由编程助手' : 'M-CAST智能教学系统'}</h1>
           <p className="text-[10px] text-app-muted font-medium">基于 AI 的智能陪伴式教学模式</p>
         </div>
         <div className="flex items-center gap-6">
@@ -1105,6 +1128,10 @@ function App() {
         </ResizablePanelGroup>
       </main>
 
+      <LoginModal 
+        isOpen={showLogin} 
+        onLogin={handleLogin} 
+      />
     </div>
   );
 }
