@@ -391,11 +391,19 @@ async def chat_stream(request: ChatRequest):
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
-@app.post("/execute", response_model=CodeExecutionResponse)
+@app.post("/api/execute", response_model=CodeExecutionResponse)
 async def execute_code(request: CodeExecutionRequest):
     try:
+        # 调试信息：打印环境信息
+        print(f"DEBUG: Executing code with {sys.executable}")
+        
         # 创建临时文件保存代码
-        with tempfile.NamedTemporaryFile(suffix=".py", delete=False, mode="w") as f:
+        # 显式指定目录为 /tmp (Vercel 可写目录)
+        temp_dir = "/tmp"
+        if not os.path.exists(temp_dir):
+            os.makedirs(temp_dir, exist_ok=True)
+            
+        with tempfile.NamedTemporaryFile(suffix=".py", delete=False, mode="w", dir=temp_dir) as f:
             f.write(request.code)
             temp_file_path = f.name
 
@@ -404,9 +412,13 @@ async def execute_code(request: CodeExecutionRequest):
             input_data = "\n".join(request.inputs) + "\n" if request.inputs else None
 
             # 运行 Python 代码
-            # 注意：在生产环境中应该使用更安全的沙箱环境（如 Docker）
+            # 尝试使用当前 sys.executable，如果失败则回退到 "python3"
+            cmd = [sys.executable, temp_file_path]
+            
+            print(f"DEBUG: Running command: {cmd}")
+            
             process = subprocess.run(
-                [sys.executable, temp_file_path],
+                cmd,
                 input=input_data, # 注入标准输入
                 capture_output=True,
                 text=True,
@@ -415,6 +427,10 @@ async def execute_code(request: CodeExecutionRequest):
             
             output = process.stdout
             error = process.stderr
+            
+            print(f"DEBUG: Execution result - ReturnCode: {process.returncode}")
+            if error:
+                print(f"DEBUG: Execution error: {error}")
             
             return CodeExecutionResponse(
                 output=output,
@@ -428,9 +444,11 @@ async def execute_code(request: CodeExecutionRequest):
     except subprocess.TimeoutExpired:
         return CodeExecutionResponse(output="", error="错误：代码运行超时（限时 5 秒）。")
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return CodeExecutionResponse(output="", error=f"执行出错：{str(e)}")
 
-@app.get("/health")
+@app.get("/api/health")
 async def health():
     return {"status": "ok"}
 
