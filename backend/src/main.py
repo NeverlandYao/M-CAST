@@ -1,6 +1,7 @@
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import os
@@ -60,9 +61,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/")
-async def root():
-    return {"message": "Hello! LogicLoom is running!"}
 
 @app.get("/api/test_db")
 async def test_db():
@@ -232,9 +230,7 @@ async def chat_stream(request: ChatRequest):
                 
                 system_prompt = f"""你是一个友好的 Python 编程助手。
 你的任务是回答学生的问题，帮助他们学习 Python 编程。
-当前学习阶段：{request.stage}。
-请直接回答问题，不需要遵循特定的教学流程或脚手架。
-保持语气亲切、鼓励。"""
+当前学习阶段：{request.stage}。保持语气亲切、鼓励。"""
                 
                 # Construct messages with context
                 messages = [SystemMessage(content=system_prompt)]
@@ -437,6 +433,36 @@ async def execute_code(request: CodeExecutionRequest):
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+# Serve static files if they exist (Production/Docker)
+# In Docker: /app/src/main.py -> static is at /app/static -> ../static
+static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+
+if os.path.exists(static_dir):
+    # Mount assets directory if it exists
+    assets_dir = os.path.join(static_dir, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    @app.get("/")
+    async def serve_index():
+        return FileResponse(os.path.join(static_dir, "index.html"))
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        if full_path.startswith("api"):
+            raise HTTPException(status_code=404)
+        
+        file_path = os.path.join(static_dir, full_path)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        
+        # SPA fallback
+        return FileResponse(os.path.join(static_dir, "index.html"))
+else:
+    @app.get("/")
+    async def root():
+        return {"message": "Hello! LogicLoom is running! (Backend Only Mode)"}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
