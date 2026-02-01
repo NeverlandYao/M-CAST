@@ -2,9 +2,11 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import Column, Integer, String, DateTime, Text, text
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.pool import NullPool
 import datetime
 import uuid
 import os
+import traceback
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -32,10 +34,12 @@ else:
     print(f"DEBUG: DATABASE_URL loaded (host/db): {safe_url}")
 
 # Create engine with pre-ping to handle closed connections
+# Serverless 优化: 使用 NullPool 禁用连接池，防止连接耗尽
 engine = create_async_engine(
     DATABASE_URL, 
     echo=True,
     pool_pre_ping=True,
+    poolclass=NullPool,
     # If using Supabase Transaction Pooler (port 6543), un-comment the next line:
     # connect_args={"server_settings": {"jit": "off"}} 
 )
@@ -70,9 +74,16 @@ class ControlChatLog(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 async def init_db():
-    async with engine.begin() as conn:
-        # Create tables if they don't exist
-        await conn.run_sync(Base.metadata.create_all)
+    print("DEBUG: Initializing database...")
+    try:
+        async with engine.begin() as conn:
+            # Create tables if they don't exist
+            await conn.run_sync(Base.metadata.create_all)
+        print("DEBUG: Database tables created/verified successfully.")
+    except Exception as e:
+        print(f"ERROR: Database initialization failed: {e}")
+        traceback.print_exc()
+        # 不抛出异常，允许应用启动，但在后续操作中可能会报错
 
 async def get_db():
     async with AsyncSessionLocal() as session:
@@ -87,6 +98,8 @@ async def log_message(session: AsyncSession, user_id: uuid.UUID, role: str, cont
         
         session.add(new_log)
         await session.commit()
+        print(f"DEBUG: Message logged successfully for student_id={student_id}, role={role}")
     except Exception as e:
-        print(f"Error logging message: {e}")
+        print(f"ERROR: Failed to log message: {e}")
+        traceback.print_exc()
         await session.rollback()

@@ -36,7 +36,15 @@ app = FastAPI(title="M-CAST Agent API")
 async def startup_event():
     print("DEBUG: Startup event triggered")
     print(f"DEBUG: Current working directory: {os.getcwd()}")
-    print(f"DEBUG: Files in current directory: {os.listdir('.')}")
+    
+    # 检查数据库环境变量
+    db_url = os.getenv("DATABASE_URL")
+    if db_url:
+        safe_url = db_url.split("@")[-1] if "@" in db_url else "..."
+        print(f"DEBUG: DATABASE_URL is set in environment (host/db: {safe_url})")
+    else:
+        print("WARNING: DATABASE_URL is NOT set in environment variables!")
+        
     try:
         # Check if backend/config exists relative to here
         base_dir = os.path.dirname(os.path.dirname(__file__))
@@ -50,6 +58,8 @@ async def startup_event():
         await init_db()
         print("DEBUG: Database initialized successfully")
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"ERROR: Startup failed: {e}")
         # We don't raise here to allow the app to start and show logs/health check
 
