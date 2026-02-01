@@ -36,6 +36,25 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// 安全的 Storage 访问帮助函数
+const safeStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      return localStorage.getItem(key);
+    } catch (e) {
+      console.warn('LocalStorage access denied:', e);
+      return null;
+    }
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      console.warn('LocalStorage access denied:', e);
+    }
+  }
+};
+
 const Mermaid = ({ chart }: { chart: string }) => {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -78,8 +97,8 @@ function App() {
   const isControlGroup = urlParams.get('mode') === 'control';
   
   // Use lazy initialization to read from localStorage immediately
-  const [studentId, setStudentId] = useState(() => localStorage.getItem('student_id') || '');
-  const [showLogin, setShowLogin] = useState(() => !localStorage.getItem('student_id'));
+  const [studentId, setStudentId] = useState(() => safeStorage.getItem('student_id') || '');
+  const [showLogin, setShowLogin] = useState(() => !safeStorage.getItem('student_id'));
   
   const [messages, setMessages] = useState<Message[]>([]);
 
@@ -87,7 +106,7 @@ function App() {
   // Add storage event listener to sync across tabs
   useEffect(() => {
     const handleStorageChange = () => {
-      const savedId = localStorage.getItem('student_id');
+      const savedId = safeStorage.getItem('student_id');
       if (savedId) {
         setStudentId(savedId);
         setShowLogin(false);
@@ -102,7 +121,7 @@ function App() {
   }, []);
 
   const handleLogin = (id: string) => {
-    localStorage.setItem('student_id', id);
+    safeStorage.setItem('student_id', id);
     setStudentId(id);
     setShowLogin(false);
   };
